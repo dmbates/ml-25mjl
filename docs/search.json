@@ -1,0 +1,44 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Downloading and examining the MovieLens 25m data",
+    "section": "",
+    "text": "\\[\n\\newcommand\\bbA{{\\mathbf{A}}}\n\\newcommand\\bbI{{\\mathbf{I}}}\n\\newcommand\\bbL{{\\mathbf{L}}}\n\\newcommand\\bbLambda{{\\boldsymbol{\\Lambda}}}\n\\]\nLoad the packages to be used"
+  },
+  {
+    "objectID": "index.html#download",
+    "href": "index.html#download",
+    "title": "Downloading and examining the MovieLens 25m data",
+    "section": "Download",
+    "text": "Download\nDownload the zip file, if necessary.\n\nzipfile = last(splitpath(ml25murl))\nisfile(zipfile) || Downloads.download(ml25murl, zipfile)\n\ntrue"
+  },
+  {
+    "objectID": "index.html#read-the-csv-file-from-the-archive-and-write-as-arrow",
+    "href": "index.html#read-the-csv-file-from-the-archive-and-write-as-arrow",
+    "title": "Downloading and examining the MovieLens 25m data",
+    "section": "Read the CSV file from the archive and write as Arrow",
+    "text": "Read the CSV file from the archive and write as Arrow\nisdir(\"data\") || mkdir(\"data\")\nratingsarrow = joinpath(\"data\", \"ratings.arrow\")\nif !isfile(ratingsarrow)\n    Arrow.write(\n        ratingsarrow,\n        CSV.File(\n            only(\n                filter(f -> endswith(f.name, \"ratings.csv\"), ZipFile.Reader(zipfile).files),\n            );\n            delim = ',',\n            header = 1,\n            types = [Int32, Int32, Float32, Int32],\n            pool = [false, true, true, false],\n        );\n        compress = :lz4,\n    )\nend;\nAs the CSV file is being read, the second and third columns, which are movieId and rating, are “pooled” so they will be written as DictEncoded in the arrow file."
+  },
+  {
+    "objectID": "index.html#read-the-data-from-the-arrow-file",
+    "href": "index.html#read-the-data-from-the-arrow-file",
+    "title": "Downloading and examining the MovieLens 25m data",
+    "section": "Read the data from the Arrow file",
+    "text": "Read the data from the Arrow file\n\ntbl = Arrow.Table(ratingsarrow)\n\nArrow.Table with 25000095 rows, 4 columns, and schema:\n :userId     Int32\n :movieId    Int32\n :rating     Float32\n :timestamp  Int32\n\n\nThe schema indicates that movieId and rating are Int32 and Float32, respectively but they are stored as DictEncoded\n\ntypeof(tbl.movieId), typeof(tbl.rating)\n\n(Arrow.DictEncoded{Int32, Int32, Arrow.Primitive{Int32, Vector{Int32}}}, Arrow.DictEncoded{Float32, Int8, Arrow.Primitive{Float32, Vector{Float32}}})\n\n\nUsually DictEncoding (analogous to the factor type in R) is used to save space. For example, the rating column could be stored as 32-bit floats but there are only 10 distinct values\n\nshow(sort(unique(tbl.rating)))\n\nFloat32[0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]\n\n\nand these are stored as 8-bit integer indices into a table of 10 Float32 values.\nHaving the movieId column dict-encoded is not for saving space but rather to be able to use the indices into the DictEncoding table, called the refarray, as row numbers when constructing a sparse matrix. There are many gaps in the original movie numbers and we want to use a contiguous set of row numbers.\n\nextrema(tbl.movieId), length(unique(tbl.movieId)), extrema(DataAPI.refarray(tbl.movieId))\n\n((1, 209171), 59047, (1, 59047))\n\n\nThe timestamp column is in the old-style Unix form of an Int32 representing the number of seconds since the epoch (midnight, January 1, 1970).\nThese values can be converted to the DateTime type with Dates.unix2datetime.\n\nshow(first(Dates.unix2datetime.(tbl.timestamp), 3))\n\n[DateTime\n\n\n(\"2006-05-17T15:34:04\"), DateTime(\"2006-05-17T12:26:57\"), DateTime(\"2006-05-17T12:27:08\")]"
+  },
+  {
+    "objectID": "index.html#diagonal-blocks-in-a",
+    "href": "index.html#diagonal-blocks-in-a",
+    "title": "Downloading and examining the MovieLens 25m data",
+    "section": "Diagonal blocks in A",
+    "text": "Diagonal blocks in A\nThere are two other non-redundant blocks in A, both of which are diagonal. The diagonal of A11 is simply the number of movies each user has rated and the diagonal of A22 is the number of ratings for each movie.\n\nNumber of movies rated per user\n\nA11diag = vec(Int32.(sum(A21; dims=1)))\nA11diag'\n\n1×162541 adjoint(::Vector{Int32}) with eltype Int32:\n 70  184  656  242  101  26  25  155  …  487  65  79  101  154  47  88  182\n\n\n\nextrema(A11diag), sum(≤(100), A11diag)\n\n((20, 32202), 99439)\n\n\nApparently someone rated over 32,000 movies; one hopes they are or were a professional movie critic. Nearly 100,000 of the 162,000 users represented here rated between 20 and 100 movies.\n\n\nNumber of users who rated each movie\n\nA22diag = vec(Int32.(sum(A21; dims=2)))\nA22diag'\n\n1×59047 adjoint(::Vector{Int32}) with eltype Int32:\n 79672  7058  6616  1269  10895  11935  …  1  1  1  1  1  1  1  1  1  1  1  1\n\n\nNotice that there are many movies that have only a single rating in this subset of the overall ratings data.\n\nextrema(A22diag), sum(isone, A22diag), sum(<(4), A22diag)\n\n((1, 81491), 10298, 22854)\n\n\nThat is, over 1/6 of these 59,047 movies have only one rating and over 1/3 have fewer than 4 ratings.\nWith so little information these movies will not affect parameter estimates for models but they will cost us dearly in terms of the amount of storage required, which in the methods described below is quadratic in the number of movies. Reducing the number of movies by 1/3 cuts the amount of storage to 4/9 of the original amount."
+  },
+  {
+    "objectID": "index.html#storage-problems",
+    "href": "index.html#storage-problems",
+    "title": "Downloading and examining the MovieLens 25m data",
+    "section": "Storage problems",
+    "text": "Storage problems\nMy problem is that I don’t have enough memory/swap space to store such a dense matrix.\nAs an Array{Float64, 2} it would require nearly 26 GB.\n\nabs2(length(A22diag)) * 8 / (2^30)\n\n25.976808436214924\n\n\nVarious options I have considered are:\n\nGet access to a computer with more memory.\nUse Float32 instead of Float64\nUse mmap arrays\nUse a packed symmetric storage, probably rectangular full packed\nTrim the movies with fewer than 4 ratings\nSome combination of the above\n\nSuggestions?"
+  }
+]

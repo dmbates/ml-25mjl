@@ -1,0 +1,218 @@
+---
+title: "Downloading and examining the MovieLens 25m data"
+author: "Douglas Bates"
+date: 2022-07-05
+jupyter: julia-1.8
+---
+
+
+::: {.hidden}
+$$
+\newcommand\bbA{{\mathbf{A}}}
+\newcommand\bbI{{\mathbf{I}}}
+\newcommand\bbL{{\mathbf{L}}}
+\newcommand\bbLambda{{\boldsymbol{\Lambda}}}
+$$
+:::
+
+Load the packages to be used
+
+```{julia}
+#| code-fold: show
+
+using Arrow         # compact, cross-language data tables
+using CSV
+using DataAPI       # generics for common data representations
+using Dates
+using Downloads
+using SparseArrays
+using ZipFile
+```
+
+# Download and re-configure the data
+
+The data are available as a `.zip` archive at
+
+```{julia}
+ml25murl = "https://files.grouplens.org/datasets/movielens/ml-25m.zip";
+```
+
+## Download
+
+Download the zip file, if necessary.
+
+```{julia}
+zipfile = last(splitpath(ml25murl))
+isfile(zipfile) || Downloads.download(ml25murl, zipfile)
+```
+
+## Read the CSV file from the archive and write as Arrow
+
+```{julia}
+isdir("data") || mkdir("data")
+ratingsarrow = joinpath("data", "ratings.arrow")
+if !isfile(ratingsarrow)
+    Arrow.write(
+        ratingsarrow,
+        CSV.File(
+            only(
+                filter(f -> endswith(f.name, "ratings.csv"), ZipFile.Reader(zipfile).files),
+            );
+            delim = ',',
+            header = 1,
+            types = [Int32, Int32, Float32, Int32],
+            pool = [false, true, true, false],
+        );
+        compress = :lz4,
+    )
+end;
+```
+
+As the CSV file is being read, the second and third columns, which are `movieId` and `rating`, are "pooled" so they will be written as `DictEncoded` in the arrow file.
+
+## Read the data from the Arrow file
+
+```{julia}
+tbl = Arrow.Table(ratingsarrow)
+```
+
+The schema indicates that `movieId` and `rating` are `Int32` and `Float32`, respectively but they are stored as `DictEncoded`
+
+```{julia}
+typeof(tbl.movieId), typeof(tbl.rating)
+```
+
+Usually `DictEncoding` (analogous to the `factor` type in R) is used to save space.
+For example, the `rating` column could be stored as 32-bit floats but there are only 10 distinct values
+
+```{julia}
+show(sort(unique(tbl.rating)))
+```
+
+and these are stored as 8-bit integer indices into a table of 10 `Float32` values.
+
+Having the `movieId` column dict-encoded is not for saving space but rather to be able to use the indices into the DictEncoding table, called the `refarray`, as row numbers when constructing a sparse matrix.
+There are many gaps in the original movie numbers and we want to use a contiguous set of row numbers.
+
+```{julia}
+extrema(tbl.movieId), length(unique(tbl.movieId)), extrema(DataAPI.refarray(tbl.movieId))
+```
+
+The `timestamp` column is in the old-style Unix form of an Int32 representing the number of seconds since the epoch (midnight, January 1, 1970).
+
+These values can be converted to the `DateTime` type with `Dates.unix2datetime`.
+
+```{julia}
+show(first(Dates.unix2datetime.(tbl.timestamp), 3))
+```
+
+# The adjacency matrix of the bipartite graph
+
+A cross-tabulation of users and movies they have rated can be considered as the [adjacency matrix](https://en.wikipedia.org/wiki/Adjacency_matrix) of a [bipartite graph](https://en.wikipedia.org/wiki/Bipartite_graph).
+If a user rates a movie there is an edge in the graph between the user and the movie.
+All edges are between a user and a movie which is what makes the graph bipartitie (two separate groups of vertices and the only edges are between the groups).
+
+Whether that is particularly helpful in the cases I am considering I don't know.
+
+I will call this adjacency matrix `A21` as it is in the [2,1] position of a matrix we usually call `A` (we're quite creative about naming things).
+
+```{julia}
+A21 = sparse(DataAPI.refarray(tbl.movieId), tbl.userId, true)
+```
+
+```{julia}
+Base.summarysize(A21) / (2^20)   # total size of the sparse matrix in MB
+```
+
+## Diagonal blocks in A
+
+There are two other non-redundant blocks in `A`, both of which are diagonal.
+The diagonal of `A11` is simply the number of movies each user has rated and the diagonal of `A22` is the number of ratings for each movie.
+
+### Number of movies rated per user
+
+```{julia}
+A11diag = vec(Int32.(sum(A21; dims=1)))
+A11diag'
+```
+
+```{julia}
+extrema(A11diag), sum(≤(100), A11diag)
+```
+
+Apparently someone rated over 32,000 movies; one hopes they are or were a professional movie critic.
+Nearly 100,000 of the 162,000 users represented here rated between 20 and 100 movies.
+
+### Number of users who rated each movie
+
+```{julia}
+A22diag = vec(Int32.(sum(A21; dims=2)))
+A22diag'
+```
+
+Notice that there are many movies that have only a single rating in this subset of the overall ratings data.
+
+```{julia}
+extrema(A22diag), sum(isone, A22diag), sum(<(4), A22diag)
+```
+
+That is, over 1/6 of these 59,047 movies have only one rating and over 1/3 have fewer than 4 ratings.
+
+With so little information these movies will not affect parameter estimates for models but they will cost us dearly in terms of the amount of storage required, which in the methods described below is quadratic in the number of movies.
+Reducing the number of movies by 1/3 cuts the amount of storage to 4/9 of the original amount.
+
+# Computational methods
+
+I wish to obtain the Cholesky factor of the symmetric blocked matrix, $\bbLambda'\bbA\bbLambda + \bbI$, where
+
+$$
+\bbA = \begin{bmatrix}
+\bbA_{1,1} & \bbA_{2,1}^\prime \\
+\bbA_{2,1} & \bbA_{2,2}
+\end{bmatrix}
+$$ {#eq-Adef}
+
+and $\bbLambda$ is diagonal with non-negative diagonal elements.
+(In other cases $\bbLambda$ can be block-diagonal with small triangular blocks, which is why the formula includes the transpose.)
+
+In fact, in this case $\bbLambda$ consists of two non-negative multiples of identity matrices, the first the same size as $\bbA_{1,1}$ and the second the same size as $\bbA_{2,2}$.
+To experiment with computational methods you can just set $\bbLambda = \bbI$.
+
+Suppose we write the lower-triangular Cholesky factor as
+
+$$
+\bbL = \begin{bmatrix}
+\bbL_{1,1} & \mathbf{0} \\
+\bbL_{2,1} & \bbL_{2,2}
+\end{bmatrix}
+$$ {#eq-Adef}
+
+Then $\bbL_{1,1}$ and $\bbL_{2,1}$ have the same non-zero patterns as $\bbA_{1,1}$ and $\bbA_{2,1}$ but $\bbL_{2,2}$ will, in general, experience fill-in.
+I haven't checked but I expect that $\bbL_{2,2}$ will have nearly complete fill-in in this case, even after a fill-reducing permutation.
+At least I expect that there will be sufficient fill-in that it will be easiest to store it as a dense triangular matrix.
+
+## Storage problems
+
+My problem is that I don't have enough memory/swap space to store such a dense matrix.
+
+As an `Array{Float64, 2}` it would require nearly 26 GB.
+
+```{julia}
+abs2(length(A22diag)) * 8 / (2^30)
+```
+
+Various options I have considered are:
+
+- Get access to a computer with more memory.
+
+- Use `Float32` instead of `Float64`
+
+- Use `mmap` arrays
+
+- Use a packed symmetric storage, probably [rectangular full packed](https://link.springer.com/chapter/10.1007/978-3-540-75755-9_69)
+
+- Trim the movies with fewer than 4 ratings
+
+- Some combination of the above
+
+Suggestions?
