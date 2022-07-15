@@ -23,9 +23,12 @@ Load the packages to be used
 using Arrow         # compact, cross-language data tables
 using CSV
 using DataAPI       # generics for common data representations
+using DataFrames
 using Dates
 using Downloads
+using Missings
 using SparseArrays
+using TypedTables
 using ZipFile
 ```
 
@@ -124,6 +127,12 @@ A21 = sparse(DataAPI.refarray(tbl.movieId), tbl.userId, true)
 Base.summarysize(A21) / (2^20)   # total size of the sparse matrix in MB
 ```
 
+Although the display of the matrix appears to be nearly dense, it is, in fact, quite sparse
+
+```{julia}
+nnz(A21) / length(A21)
+```
+
 ## Diagonal blocks in A
 
 There are two other non-redundant blocks in `A`, both of which are diagonal.
@@ -216,3 +225,52 @@ Various options I have considered are:
 - Some combination of the above
 
 Suggestions?
+
+# Movie titles and genres
+
+Create a single table containing the information on each movie, including the movie numbers in the `imdb.com` and `themoviedb.org` (tmdb) databases.
+
+```{julia}
+moviesarrow = joinpath("data", "movies.arrow")
+if !isfile(moviesarrow)
+    movies = CSV.read(
+        only(filter(f -> endswith(f.name, "movies.csv"), ZipFile.Reader(zipfile).files)),
+        DataFrame;
+        types=[Int32, String, String],
+        pool=[false, false, true]
+    )
+    replace!(movies.genres, "(no genres listed)" => "")
+    title = String[]
+    year = Union{Missing,Int16}[]
+    yearregex = r"(.*)\((\d+)\)+\s*$"
+    for t in movies.title
+        m = match(yearregex, t)
+        if isnothing(m)
+            push!(title, strip(t))
+            push!(year, missing)
+        else
+            push!(title, strip(first(m.captures)))
+            push!(year, parse(Int16, last(m.captures)))
+        end
+    end
+    movies.title = title
+    movies.year = year
+    disallowmissing!(
+        leftjoin!(
+            movies,
+            CSV.read(
+                only(filter(f -> endswith(f.name, "links.csv"), ZipFile.Reader(zipfile).files)),
+                DataFrame;
+                types=[Int32,Int32,Int32]
+            );
+            on=:movieId
+        );
+        error=false,
+    )
+    select!(movies, :title, :year, :genres, :tmdbId, :imdbId, :movieId)
+    Arrow.write(moviesarrow, movies; compress=:lz4)
+    Table(movies)
+end
+```
+
+More information on individual movies can be retrieved from `https://themoviedb.org/movie/<tmdbId>` 

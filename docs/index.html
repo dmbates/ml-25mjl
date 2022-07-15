@@ -98,7 +98,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <link href="site_libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet">
+<link href="site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -176,6 +176,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
   <ul class="collapse">
   <li><a href="#storage-problems" id="toc-storage-problems" class="nav-link" data-scroll-target="#storage-problems">Storage problems</a></li>
   </ul></li>
+  <li><a href="#movie-titles-and-genres" id="toc-movie-titles-and-genres" class="nav-link" data-scroll-target="#movie-titles-and-genres">Movie titles and genres</a></li>
   </ul>
 </nav>
     </div>
@@ -224,10 +225,13 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Arrow         </span><span class="co"># compact, cross-language data tables</span></span>
 <span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">CSV</span></span>
 <span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">DataAPI       </span><span class="co"># generics for common data representations</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Dates</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Downloads</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">SparseArrays</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">ZipFile</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">DataFrames</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Dates</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Downloads</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">Missings</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">SparseArrays</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">TypedTables</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="im">using</span> <span class="bu">ZipFile</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </details>
 <section id="download-and-re-configure-the-data" class="level1">
 <h1>Download and re-configure the data</h1>
@@ -337,22 +341,29 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <pre><code>119.82994365692139</code></pre>
 </div>
 </div>
+<p>Although the display of the matrix appears to be nearly dense, it is, in fact, quite sparse</p>
+<div class="cell" data-execution_count="12">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">nnz</span>(A21) <span class="op">/</span> <span class="fu">length</span>(A21)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="13">
+<pre><code>0.002604839052572928</code></pre>
+</div>
+</div>
 <section id="diagonal-blocks-in-a" class="level2">
 <h2 class="anchored" data-anchor-id="diagonal-blocks-in-a">Diagonal blocks in A</h2>
 <p>There are two other non-redundant blocks in <code>A</code>, both of which are diagonal. The diagonal of <code>A11</code> is simply the number of movies each user has rated and the diagonal of <code>A22</code> is the number of ratings for each movie.</p>
 <section id="number-of-movies-rated-per-user" class="level3">
 <h3 class="anchored" data-anchor-id="number-of-movies-rated-per-user">Number of movies rated per user</h3>
-<div class="cell" data-execution_count="12">
-<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>A11diag <span class="op">=</span> <span class="fu">vec</span>(<span class="fu">Int32</span>.(<span class="fu">sum</span>(A21; dims<span class="op">=</span><span class="fl">1</span>)))</span>
-<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>A11diag<span class="op">'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="13">
+<div class="cell" data-execution_count="13">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a>A11diag <span class="op">=</span> <span class="fu">vec</span>(<span class="fu">Int32</span>.(<span class="fu">sum</span>(A21; dims<span class="op">=</span><span class="fl">1</span>)))</span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>A11diag<span class="op">'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="14">
 <pre><code>1×162541 adjoint(::Vector{Int32}) with eltype Int32:
  70  184  656  242  101  26  25  155  …  487  65  79  101  154  47  88  182</code></pre>
 </div>
 </div>
-<div class="cell" data-execution_count="13">
-<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">extrema</span>(A11diag), <span class="fu">sum</span>(<span class="fu">≤</span>(<span class="fl">100</span>), A11diag)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="14">
+<div class="cell" data-execution_count="14">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">extrema</span>(A11diag), <span class="fu">sum</span>(<span class="fu">≤</span>(<span class="fl">100</span>), A11diag)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="15">
 <pre><code>((20, 32202), 99439)</code></pre>
 </div>
 </div>
@@ -360,18 +371,18 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </section>
 <section id="number-of-users-who-rated-each-movie" class="level3">
 <h3 class="anchored" data-anchor-id="number-of-users-who-rated-each-movie">Number of users who rated each movie</h3>
-<div class="cell" data-execution_count="14">
-<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>A22diag <span class="op">=</span> <span class="fu">vec</span>(<span class="fu">Int32</span>.(<span class="fu">sum</span>(A21; dims<span class="op">=</span><span class="fl">2</span>)))</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>A22diag<span class="op">'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="15">
+<div class="cell" data-execution_count="15">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>A22diag <span class="op">=</span> <span class="fu">vec</span>(<span class="fu">Int32</span>.(<span class="fu">sum</span>(A21; dims<span class="op">=</span><span class="fl">2</span>)))</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>A22diag<span class="op">'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="16">
 <pre><code>1×59047 adjoint(::Vector{Int32}) with eltype Int32:
  79672  7058  6616  1269  10895  11935  …  1  1  1  1  1  1  1  1  1  1  1  1</code></pre>
 </div>
 </div>
 <p>Notice that there are many movies that have only a single rating in this subset of the overall ratings data.</p>
-<div class="cell" data-execution_count="15">
-<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">extrema</span>(A22diag), <span class="fu">sum</span>(isone, A22diag), <span class="fu">sum</span>(<span class="fu">&lt;</span>(<span class="fl">4</span>), A22diag)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="16">
+<div class="cell" data-execution_count="16">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="fu">extrema</span>(A22diag), <span class="fu">sum</span>(isone, A22diag), <span class="fu">sum</span>(<span class="fu">&lt;</span>(<span class="fl">4</span>), A22diag)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="17">
 <pre><code>((1, 81491), 10298, 22854)</code></pre>
 </div>
 </div>
@@ -403,9 +414,9 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <h2 class="anchored" data-anchor-id="storage-problems">Storage problems</h2>
 <p>My problem is that I don’t have enough memory/swap space to store such a dense matrix.</p>
 <p>As an <code>Array{Float64, 2}</code> it would require nearly 26 GB.</p>
-<div class="cell" data-execution_count="16">
-<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="fu">abs2</span>(<span class="fu">length</span>(A22diag)) <span class="op">*</span> <span class="fl">8</span> <span class="op">/</span> (<span class="fl">2</span><span class="op">^</span><span class="fl">30</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
-<div class="cell-output cell-output-display" data-execution_count="17">
+<div class="cell" data-execution_count="17">
+<div class="sourceCode cell-code" id="cb31"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">abs2</span>(<span class="fu">length</span>(A22diag)) <span class="op">*</span> <span class="fl">8</span> <span class="op">/</span> (<span class="fl">2</span><span class="op">^</span><span class="fl">30</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="18">
 <pre><code>25.976808436214924</code></pre>
 </div>
 </div>
@@ -419,14 +430,108 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li><p>Some combination of the above</p></li>
 </ul>
 <p>Suggestions?</p>
-
-
 </section>
+</section>
+<section id="movie-titles-and-genres" class="level1">
+<h1>Movie titles and genres</h1>
+<p>Create a single table containing the information on each movie, including the movie numbers in the <code>imdb.com</code> and <code>themoviedb.org</code> (tmdb) databases.</p>
+<div class="cell" data-execution_count="18">
+<div class="sourceCode cell-code" id="cb33"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a>moviesarrow <span class="op">=</span> <span class="fu">joinpath</span>(<span class="st">"data"</span>, <span class="st">"movies.arrow"</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> !<span class="fu">isfile</span>(moviesarrow)</span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>    movies <span class="op">=</span> CSV.<span class="fu">read</span>(</span>
+<span id="cb33-4"><a href="#cb33-4" aria-hidden="true" tabindex="-1"></a>        <span class="fu">only</span>(<span class="fu">filter</span>(f <span class="op">-&gt;</span> <span class="fu">endswith</span>(f.name, <span class="st">"movies.csv"</span>), ZipFile.<span class="fu">Reader</span>(zipfile).files)),</span>
+<span id="cb33-5"><a href="#cb33-5" aria-hidden="true" tabindex="-1"></a>        DataFrame;</span>
+<span id="cb33-6"><a href="#cb33-6" aria-hidden="true" tabindex="-1"></a>        types<span class="op">=</span>[<span class="dt">Int32</span>, <span class="dt">String</span>, <span class="dt">String</span>],</span>
+<span id="cb33-7"><a href="#cb33-7" aria-hidden="true" tabindex="-1"></a>        pool<span class="op">=</span>[<span class="cn">false</span>, <span class="cn">false</span>, <span class="cn">true</span>]</span>
+<span id="cb33-8"><a href="#cb33-8" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb33-9"><a href="#cb33-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">replace!</span>(movies.genres, <span class="st">"(no genres listed)"</span> <span class="op">=&gt;</span> <span class="st">""</span>)</span>
+<span id="cb33-10"><a href="#cb33-10" aria-hidden="true" tabindex="-1"></a>    title <span class="op">=</span> <span class="dt">String</span>[]</span>
+<span id="cb33-11"><a href="#cb33-11" aria-hidden="true" tabindex="-1"></a>    year <span class="op">=</span> <span class="dt">Union</span>{<span class="dt">Missing</span>,<span class="dt">Int16</span>}[]</span>
+<span id="cb33-12"><a href="#cb33-12" aria-hidden="true" tabindex="-1"></a>    yearregex <span class="op">=</span> <span class="st">r"</span><span class="ch">(</span><span class="sc">.*</span><span class="ch">)</span><span class="sc">\(</span><span class="ch">(</span><span class="sc">\d+</span><span class="ch">)</span><span class="sc">\)+\s*$</span><span class="st">"</span></span>
+<span id="cb33-13"><a href="#cb33-13" aria-hidden="true" tabindex="-1"></a><span class="st">    </span>for<span class="st"> t in movies</span><span class="sc">.</span><span class="st">title</span></span>
+<span id="cb33-14"><a href="#cb33-14" aria-hidden="true" tabindex="-1"></a>        m <span class="op">=</span> <span class="fu">match</span>(yearregex, t)</span>
+<span id="cb33-15"><a href="#cb33-15" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> <span class="fu">isnothing</span>(m)</span>
+<span id="cb33-16"><a href="#cb33-16" aria-hidden="true" tabindex="-1"></a>            <span class="fu">push!</span>(title, <span class="fu">strip</span>(t))</span>
+<span id="cb33-17"><a href="#cb33-17" aria-hidden="true" tabindex="-1"></a>            <span class="fu">push!</span>(year, <span class="cn">missing</span>)</span>
+<span id="cb33-18"><a href="#cb33-18" aria-hidden="true" tabindex="-1"></a>        <span class="cf">else</span></span>
+<span id="cb33-19"><a href="#cb33-19" aria-hidden="true" tabindex="-1"></a>            <span class="fu">push!</span>(title, <span class="fu">strip</span>(<span class="fu">first</span>(m.captures)))</span>
+<span id="cb33-20"><a href="#cb33-20" aria-hidden="true" tabindex="-1"></a>            <span class="fu">push!</span>(year, <span class="fu">parse</span>(<span class="dt">Int16</span>, <span class="fu">last</span>(m.captures)))</span>
+<span id="cb33-21"><a href="#cb33-21" aria-hidden="true" tabindex="-1"></a>        <span class="cf">end</span></span>
+<span id="cb33-22"><a href="#cb33-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">end</span></span>
+<span id="cb33-23"><a href="#cb33-23" aria-hidden="true" tabindex="-1"></a>    movies.title <span class="op">=</span> title</span>
+<span id="cb33-24"><a href="#cb33-24" aria-hidden="true" tabindex="-1"></a>    movies.year <span class="op">=</span> year</span>
+<span id="cb33-25"><a href="#cb33-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">disallowmissing!</span>(</span>
+<span id="cb33-26"><a href="#cb33-26" aria-hidden="true" tabindex="-1"></a>        <span class="fu">leftjoin!</span>(</span>
+<span id="cb33-27"><a href="#cb33-27" aria-hidden="true" tabindex="-1"></a>            movies,</span>
+<span id="cb33-28"><a href="#cb33-28" aria-hidden="true" tabindex="-1"></a>            CSV.<span class="fu">read</span>(</span>
+<span id="cb33-29"><a href="#cb33-29" aria-hidden="true" tabindex="-1"></a>                <span class="fu">only</span>(<span class="fu">filter</span>(f <span class="op">-&gt;</span> <span class="fu">endswith</span>(f.name, <span class="st">"links.csv"</span>), ZipFile.<span class="fu">Reader</span>(zipfile).files)),</span>
+<span id="cb33-30"><a href="#cb33-30" aria-hidden="true" tabindex="-1"></a>                DataFrame;</span>
+<span id="cb33-31"><a href="#cb33-31" aria-hidden="true" tabindex="-1"></a>                types<span class="op">=</span>[<span class="dt">Int32</span>,<span class="dt">Int32</span>,<span class="dt">Int32</span>]</span>
+<span id="cb33-32"><a href="#cb33-32" aria-hidden="true" tabindex="-1"></a>            );</span>
+<span id="cb33-33"><a href="#cb33-33" aria-hidden="true" tabindex="-1"></a>            on<span class="op">=:</span>movieId</span>
+<span id="cb33-34"><a href="#cb33-34" aria-hidden="true" tabindex="-1"></a>        );</span>
+<span id="cb33-35"><a href="#cb33-35" aria-hidden="true" tabindex="-1"></a>        error<span class="op">=</span><span class="cn">false</span>,</span>
+<span id="cb33-36"><a href="#cb33-36" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb33-37"><a href="#cb33-37" aria-hidden="true" tabindex="-1"></a>    <span class="fu">select!</span>(movies, <span class="op">:</span>title, <span class="op">:</span>year, <span class="op">:</span>genres, <span class="op">:</span>tmdbId, <span class="op">:</span>imdbId, <span class="op">:</span>movieId)</span>
+<span id="cb33-38"><a href="#cb33-38" aria-hidden="true" tabindex="-1"></a>    Arrow.<span class="fu">write</span>(moviesarrow, movies; compress<span class="op">=:</span>lz4)</span>
+<span id="cb33-39"><a href="#cb33-39" aria-hidden="true" tabindex="-1"></a>    <span class="fu">Table</span>(movies)</span>
+<span id="cb33-40"><a href="#cb33-40" aria-hidden="true" tabindex="-1"></a><span class="kw">end</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-display" data-execution_count="19">
+<pre><code>Table with 6 columns and 62423 rows:
+      title                 year  genres                tmdbId  imdbId  movieId
+    ┌──────────────────────────────────────────────────────────────────────────
+ 1  │ Toy Story             1995  Adventure|Animation…  862     114709  1
+ 2  │ Jumanji               1995  Adventure|Children|…  8844    113497  2
+ 3  │ Grumpier Old Men      1995  Comedy|Romance        15602   113228  3
+ 4  │ Waiting to Exhale     1995  Comedy|Drama|Romance  31357   114885  4
+ 5  │ Father of the Bride…  1995  Comedy                11862   113041  5
+ 6  │ Heat                  1995  Action|Crime|Thrill…  949     113277  6
+ 7  │ Sabrina               1995  Comedy|Romance        11860   114319  7
+ 8  │ Tom and Huck          1995  Adventure|Children    45325   112302  8
+ 9  │ Sudden Death          1995  Action                9091    114576  9
+ 10 │ GoldenEye             1995  Action|Adventure|Th…  710     113189  10
+ 11 │ American President,…  1995  Comedy|Drama|Romance  9087    112346  11
+ 12 │ Dracula: Dead and L…  1995  Comedy|Horror         12110   112896  12
+ 13 │ Balto                 1995  Adventure|Animation…  21032   112453  13
+ 14 │ Nixon                 1995  Drama                 10858   113987  14
+ 15 │ Cutthroat Island      1995  Action|Adventure|Ro…  1408    112760  15
+ 16 │ Casino                1995  Crime|Drama           524     112641  16
+ 17 │ Sense and Sensibili…  1995  Drama|Romance         4584    114388  17
+ 18 │ Four Rooms            1995  Comedy                5       113101  18
+ 19 │ Ace Ventura: When N…  1995  Comedy                9273    112281  19
+ 20 │ Money Train           1995  Action|Comedy|Crime…  11517   113845  20
+ 21 │ Get Shorty            1995  Comedy|Crime|Thrill…  8012    113161  21
+ 22 │ Copycat               1995  Crime|Drama|Horror|…  1710    112722  22
+ 23 │ Assassins             1995  Action|Crime|Thrill…  9691    112401  23
+ ⋮  │          ⋮             ⋮             ⋮              ⋮       ⋮        ⋮</code></pre>
+</div>
+</div>
+<p>More information on individual movies can be retrieved from <code>https://themoviedb.org/movie/&lt;tmdbId&gt;</code></p>
+
+
 </section>
 
 </main> <!-- /main -->
 <script id="quarto-html-after-body" type="application/javascript">
 window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
   const icon = "";
   const anchorJS = new window.AnchorJS();
   anchorJS.options = {
